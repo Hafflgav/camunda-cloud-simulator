@@ -29,7 +29,6 @@ public class TimeAwareDemoGenerator {
     private boolean includeWeekend = false;
     private ClockActuatorClient client;
     private Map<String, StatisticalDistribution> distributions = new HashMap<String, StatisticalDistribution>();
-    private Map<Object, Date> dueCache = new HashMap<>();
     private String deploymentId;
     private DatatypeFactory datatypeFactory;
     private Date previousStartTime;
@@ -168,12 +167,12 @@ public class TimeAwareDemoGenerator {
         nextStartTime = calculateNextStartTime(null, lastTimeToStart.getTime());
 
         while (true) {
-            Optional<Work<?>> candidate = calculateNextSimulationStep(stopTime, runningProcessInstanceIds, processInstanceIdsAlreadyReachedCurrentTime);
+            Optional<Work<?>> workCandidate = calculateNextSimulationStep(stopTime, runningProcessInstanceIds, processInstanceIdsAlreadyReachedCurrentTime);
 
-            if (!candidate.isPresent() && nextStartTime == null) {
+            if (!workCandidate.isPresent() && nextStartTime == null) {
                 break;
             }
-            if (nextStartTime != null && (!candidate.isPresent() || candidate.get().getDue().after(nextStartTime))) {
+            if (nextStartTime != null && (!workCandidate.isPresent() || workCandidate.get().getDue().after(nextStartTime))) {
                 if (firstStartTime == null) {
                     firstStartTime = nextStartTime;
                 }
@@ -264,9 +263,27 @@ public class TimeAwareDemoGenerator {
     }
 
     protected Optional<Work<?>> calculateNextSimulationStep(Date theRealNow, Set<String> runningProcessInstanceIds, Set<String> processInstancIdsAlreadyReachedCurrentTime) {
+        if (runningProcessInstanceIds.isEmpty()) {
+            return Optional.empty();
+        }
 
+        /**
+         * Todo: Collect all started process instances
+         * Additionally we need to remember to collect all previously started call activities
+         */
+
+
+
+        /**
+         * Todo: Get all doable work of all running (process|call activity) instances
+         */
+
+
+
+        List<Work<?>> candidates = new LinkedList<>();
+        Optional<Work<?>> candidate = candidates.stream().min((workA, workB) -> workA.getDue().compareTo(workB.getDue()));
+        return candidate;
     }
-
 }
 
 
