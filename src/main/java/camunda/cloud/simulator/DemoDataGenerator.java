@@ -1,29 +1,27 @@
 package camunda.cloud.simulator;
 
 import camunda.cloud.clock.ClockActuatorClient;
+import io.camunda.zeebe.client.ZeebeClient;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
 import io.camunda.zeebe.model.bpmn.instance.Documentation;
 import io.camunda.zeebe.model.bpmn.instance.Process;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.logging.Logger;
 
 public class DemoDataGenerator {
     public static final String VAR_NAME_GENERATED = "demo-data-generated";
     private static final Logger log = Logger.getLogger(DemoDataGenerator.class.getName());
-    private static final String zeebeBrokerAddress ="123";
 
-    public static long autoGenerateAll(List<BpmnModelInstance> bpmnModelInstances) {
+    public static long autoGenerateAll(ZeebeClient client, String zeebeBrokerAddress, List<BpmnModelInstance> bpmnModelInstances) {
         long startedInstances = 0;
         for (BpmnModelInstance modelInstance : bpmnModelInstances) {
-            startedInstances += autoGenerateFor(modelInstance);
+            startedInstances += autoGenerateFor(client, zeebeBrokerAddress, modelInstance);
         }
         return startedInstances;
     }
 
-    public static long autoGenerateFor(BpmnModelInstance modelInstance) {
+    public static long autoGenerateFor(ZeebeClient zeebeClient, String zeebeBrokerAddress, BpmnModelInstance modelInstance) {
         log.info("check auto generation for " + modelInstance.getDefinitions().getName());
 
         String simulate = findProperty(modelInstance, "simulate").orElse("false");
@@ -35,15 +33,15 @@ public class DemoDataGenerator {
         String includeWeekend = findProperty(modelInstance, "simulateIncludeWeekend").orElse("false");
         boolean runAlways = findProperty(modelInstance, "simulateRunAlways").orElse("false").toLowerCase().equals("true");
 
-        if (simulate.equals("false")){
+        if (simulate.equals("false")) {
             log.info("simulation was set to false - no simulation triggered");
             return 0;
-        }else {
+        } else {
             log.info("simulation properties set - auto generation applied (" + numberOfDaysInPast + " days in past, time between mean: "
                     + timeBetweenStartsBusinessDaysMean + " and Standard Deviation: " + timeBetweenStartsBusinessDaysSd);
 
-            return new TimeAwareDemoGenerator(modelInstance, new ClockActuatorClient(zeebeBrokerAddress))
-                    .processDefinitionKey(modelInstance.getDefinitions().getId())
+            return new TimeAwareDemoGenerator(zeebeClient, modelInstance, new ClockActuatorClient(zeebeBrokerAddress))
+                    .processID(modelInstance.getModelElementsByType(Process.class).stream().findFirst().get().getId())
                     .numberOfDaysInPast(Integer.valueOf(numberOfDaysInPast))
                     .timeBetweenStartsBusinessDays(timeBetweenStartsBusinessDaysMean, timeBetweenStartsBusinessDaysSd)
                     .startTimeBusinessDay(startBusinessDayAt)
@@ -55,24 +53,30 @@ public class DemoDataGenerator {
     }
 
     public static Optional<String> findProperty(BpmnModelInstance modelInstance, String propertyNameToSearch) {
-
         Collection<Documentation> documentations = modelInstance.getModelElementsByType(Documentation.class);
-        for (Documentation documentation : documentations) {
-            if (Process.class.isAssignableFrom(documentation.getParentElement().getClass())) {
-                String textContent = documentation.getRawTextContent();
-                String[] lines = textContent.split("\n");
-                for (String line : lines) {
-                    String[] lineElements = line.trim().split("=");
-                    String propertyName = lineElements[0].trim();
-                    String propertyValue = lineElements[1].trim();
+        HashMap<String, String> simulationParameter = new HashMap<>();
 
-                    // TODO: Probably we should parse the model instance once globally and remember all relevant properties to access them later easily
-                    if (propertyNameToSearch.equals(propertyName)) {
-                        return Optional.of(propertyValue);
-                    }
+        for (Documentation documentation : documentations) {
+            String documentationContent = documentation.getRawTextContent();
+            String[] lines = documentationContent.split("\n");
+
+            for (String line : lines) {
+                if(line.isEmpty()){
+                    continue;
                 }
-            } // TODO: We could even copllect all properties of all elements
+                String[] keyValue = line.trim().split("=");
+                simulationParameter.put(keyValue[0].trim(), keyValue[1].trim());
+
+                if (simulationParameter.containsKey(propertyNameToSearch)) {
+                    return Optional.of(simulationParameter.get(propertyNameToSearch));
+                }
+            }
         }
+
+        /**
+         * Question: Removing the if condition (if (Process.class.isAssignableFrom(documentation.getParentElement().getClass())))
+         * should make it possible to query the whole documentation
+         */
         return Optional.empty();
     }
 }

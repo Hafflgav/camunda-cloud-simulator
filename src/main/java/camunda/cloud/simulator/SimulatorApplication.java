@@ -6,6 +6,7 @@ import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
 import io.camunda.zeebe.spring.client.EnableZeebeClient;
 import io.camunda.zeebe.spring.client.annotation.ZeebeDeployment;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -18,23 +19,18 @@ import javax.annotation.PostConstruct;
 public class SimulatorApplication {
 
 	@Autowired
-	private ZeebeClient client;
+	private ZeebeClient zeebeClient;
+	protected final String zeebeBrokerAddress = "123";
 
 	public static void main(String[] args) {
 		ConfigurableApplicationContext context = SpringApplication.run(SimulatorApplication.class, args);
-		context.getBean(SimulatorApplication.class).doSomeSampleStuff();
+		context.getBean(SimulatorApplication.class).triggerSimulation();
 	}
 
-	public void doSomeSampleStuff() {
-		System.out.println("JIIIIIHAAAA ##############################################");
-
-		// for the moment just read if from classpath
+	public void triggerSimulation() {
+		System.out.println("------------------ Start of the Simulation has been triggered -----------------");
 		BpmnModelInstance bpmnModelInstance = Bpmn.readModelFromStream(this.getClass().getResourceAsStream("/test.bpmn"));
-
-		// but deploy to Zeebe to "simulate" real situation
-		//client.newDeployCommand().addProcessModel(bpmnModelInstance, "test.bpmn").send().join();
-
-		// but now generate some demo data
-		DemoDataGenerator.autoGenerateFor(bpmnModelInstance);
+		System.out.println("------------------------ BPMN Model has been imported -------------------------");
+		DemoDataGenerator.autoGenerateFor(zeebeClient, zeebeBrokerAddress, bpmnModelInstance);
 	}
 }

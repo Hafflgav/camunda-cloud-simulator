@@ -2,15 +2,15 @@ package camunda.cloud.simulator;
 
 import camunda.cloud.clock.ClockActuatorClient;
 import io.camunda.zeebe.client.ZeebeClient;
+import io.camunda.zeebe.model.bpmn.Bpmn;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
-import io.camunda.zeebe.model.bpmn.instance.StartEvent;
-import jdk.jshell.spi.ExecutionControl;
+import io.camunda.zeebe.spring.client.annotation.ZeebeWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.xml.datatype.DatatypeFactory;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.channels.NotYetBoundException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -19,7 +19,11 @@ public class TimeAwareDemoGenerator {
     public static final int METRIC_INTERVAL_MINUTES = 15;
     private static final Logger LOG = LoggerFactory.getLogger(TimeAwareDemoGenerator.class);
     private static TimeAwareDemoGenerator runningInstance = null;
-    public static TimeAwareDemoGenerator getRunningInstance() {return runningInstance;}
+
+    public static TimeAwareDemoGenerator getRunningInstance() {
+        return runningInstance;
+    }
+
     private String bpmnProcessId;
     private int numberOfDaysInPast;
     private int numberOfDaysToSkip;
@@ -28,7 +32,7 @@ public class TimeAwareDemoGenerator {
     private String endTimeBusinessDay;
     private boolean runAlways;
     private boolean includeWeekend = false;
-    private ClockActuatorClient client;
+    private ClockActuatorClient clockActuatorClient;
     private Map<String, StatisticalDistribution> distributions = new HashMap<String, StatisticalDistribution>();
     private String deploymentId;
     private DatatypeFactory datatypeFactory;
@@ -43,16 +47,30 @@ public class TimeAwareDemoGenerator {
     private Date cachedDayStartTime = null;
     private Date cachedDayEndTime = null;
 
-    /**
-     * Todo: Take care of unknown properties
-     * private ProcessApplicationReference originalProcessApplication
-     * private ProcessApplicationReference simulatingProcessApplication
-     */
+    public Date getStopTime() {
+        return stopTime;
+    }
+
+    public Date getFirstStartTime() {
+        return firstStartTime;
+    }
+
+    public Date getPreviousStartTime() {
+        return previousStartTime;
+    }
+
+    public Date getNextStartTime() {
+        return nextStartTime;
+    }
+
+    private Optional<Double> parseTime(String time) {
+        return null;
+    }
 
     public TimeAwareDemoGenerator(ZeebeClient zeebeClient, BpmnModelInstance modelInstance, ClockActuatorClient client) {
         this.zeebeClient = zeebeClient;
         this.originalModelInstance = modelInstance;
-        this.client = client;
+        this.clockActuatorClient = client;
     }
 
     public TimeAwareDemoGenerator timeBetweenStartsBusinessDays(double mean, double standardDeviation) {
@@ -61,7 +79,12 @@ public class TimeAwareDemoGenerator {
     }
 
     public TimeAwareDemoGenerator timeBetweenStartsBusinessDays(String mean, String standardDeviation) {
-        timeBetweenStartsBusinessDays = new StatisticalDistribution(parseTime(mean).get(), parseTime(standardDeviation).get());
+        timeBetweenStartsBusinessDays = new StatisticalDistribution(Double.parseDouble(mean), Double.parseDouble(standardDeviation));
+        return this;
+    }
+
+    public TimeAwareDemoGenerator processID(String bpmnProcessId) {
+        this.bpmnProcessId = bpmnProcessId;
         return this;
     }
 
@@ -95,30 +118,8 @@ public class TimeAwareDemoGenerator {
         return this;
     }
 
-    public Date getStopTime() {
-        return stopTime;
-    }
-
-    public Date getFirstStartTime() {
-        return firstStartTime;
-    }
-
-    public Date getPreviousStartTime() {
-        return previousStartTime;
-    }
-
-    public Date getNextStartTime() {
-        return nextStartTime;
-    }
-
-    private Optional<Double> parseTime (String time){
-        return null;
-    }
-
     public long run() {
-        if (runningInstance != null) {
-            throw new RuntimeException("There can only be one! (running TimeAwareDemoGenerator)");
-        }
+        if (runningInstance != null) {throw new RuntimeException("There can only be one running instance! (TimeAwareDemoGenerator)");}
         runningInstance = this;
 
         try {
@@ -128,27 +129,25 @@ public class TimeAwareDemoGenerator {
             zeebeClient.newDeployCommand()
                     .addProcessModel(tweakedBpmnModelInstance, "test.bpmn")
                     .send().join();
-            try{
+            try {
                 long result = simulate();
                 return result;
             } finally {
-                // TODO There is a good risk that the modelInstance is mutable and the orogonalModelInstance is also changed here
-                // - then we would need to switch to using the BPMN XML strings we created in the DemoModelInstrumentator
                 zeebeClient.newDeployCommand()
-                        .addProcessModel(originalModelInstance, "test.bpmn")
+                        .addProcessModel(instrumentator.getOriginalModels(), "test.bpmn")
                         .send().join();
-            }
 
+            }
         } finally {
-        runningInstance = null;
-        return 0;
+            runningInstance = null;
+            return 0;
         }
     }
 
-    protected long simulate(){
+    protected long simulate() {
         /** Todo: refresh content data generator
-        * ContentGeneratorRegistry.init(engine);
-        */
+         * ContentGeneratorRegistry.init(engine);
+         */
 
         if (stopTime == null) {
             stopTime = new Date();
@@ -180,7 +179,7 @@ public class TimeAwareDemoGenerator {
                 previousStartTime = nextStartTime;
 
                 try {
-                    client.pinZeebeTime(nextStartTime.toInstant());
+                    clockActuatorClient.pinZeebeTime(nextStartTime.toInstant());
                 } catch (IOException e) {
                     e.printStackTrace();
                 } catch (InterruptedException e) {
@@ -273,14 +272,10 @@ public class TimeAwareDemoGenerator {
          * Additionally we need to remember to collect all previously started call activities
          */
 
-
-
         /**
          * Todo: Get all doable work of all running (process|call activity) instances
          */
-
-
-
+        
         List<Work<?>> candidates = new LinkedList<>();
         Optional<Work<?>> candidate = candidates.stream().min((workA, workB) -> workA.getDue().compareTo(workB.getDue()));
         return candidate;
