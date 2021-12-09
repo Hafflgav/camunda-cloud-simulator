@@ -2,6 +2,8 @@ package camunda.cloud.simulator;
 
 import camunda.cloud.clock.ClockActuatorClient;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
+import io.camunda.zeebe.model.bpmn.instance.Documentation;
+import io.camunda.zeebe.model.bpmn.instance.Process;
 
 import java.util.Collection;
 import java.util.List;
@@ -52,13 +54,25 @@ public class DemoDataGenerator {
         }
     }
 
-    public static Optional<String> findProperty(BpmnModelInstance modelInstance, String propertyName) {
+    public static Optional<String> findProperty(BpmnModelInstance modelInstance, String propertyNameToSearch) {
 
-        /**
-         * Todo: Wirte a method to find a property in a Zeebe ModelInstance
-         * What is the equivalent to the Object CamundaProperties in Zeebe?
-         */
+        Collection<Documentation> documentations = modelInstance.getModelElementsByType(Documentation.class);
+        for (Documentation documentation : documentations) {
+            if (Process.class.isAssignableFrom(documentation.getParentElement().getClass())) {
+                String textContent = documentation.getRawTextContent();
+                String[] lines = textContent.split("\n");
+                for (String line : lines) {
+                    String[] lineElements = line.trim().split("=");
+                    String propertyName = lineElements[0].trim();
+                    String propertyValue = lineElements[1].trim();
 
+                    // TODO: Probably we should parse the model instance once globally and remember all relevant properties to access them later easily
+                    if (propertyNameToSearch.equals(propertyName)) {
+                        return Optional.of(propertyValue);
+                    }
+                }
+            } // TODO: We could even copllect all properties of all elements
+        }
         return Optional.empty();
     }
 }

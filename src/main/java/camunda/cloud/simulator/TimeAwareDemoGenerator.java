@@ -1,6 +1,7 @@
 package camunda.cloud.simulator;
 
 import camunda.cloud.clock.ClockActuatorClient;
+import io.camunda.zeebe.client.ZeebeClient;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
 import io.camunda.zeebe.model.bpmn.instance.StartEvent;
 import jdk.jshell.spi.ExecutionControl;
@@ -19,7 +20,7 @@ public class TimeAwareDemoGenerator {
     private static final Logger LOG = LoggerFactory.getLogger(TimeAwareDemoGenerator.class);
     private static TimeAwareDemoGenerator runningInstance = null;
     public static TimeAwareDemoGenerator getRunningInstance() {return runningInstance;}
-    private String processDefinitionKey;
+    private String bpmnProcessId;
     private int numberOfDaysInPast;
     private int numberOfDaysToSkip;
     private StatisticalDistribution timeBetweenStartsBusinessDays;
@@ -32,7 +33,8 @@ public class TimeAwareDemoGenerator {
     private String deploymentId;
     private DatatypeFactory datatypeFactory;
     private Date previousStartTime;
-    private BpmnModelInstance modelInstance;
+    private ZeebeClient zeebeClient;
+    private BpmnModelInstance originalModelInstance;
     private Date nextMetricTime = null;
     private Date stopTime;
     private Date firstStartTime;
@@ -47,8 +49,9 @@ public class TimeAwareDemoGenerator {
      * private ProcessApplicationReference simulatingProcessApplication
      */
 
-    public TimeAwareDemoGenerator(BpmnModelInstance modelInstance, ClockActuatorClient client) {
-        this.modelInstance = modelInstance;
+    public TimeAwareDemoGenerator(ZeebeClient zeebeClient, BpmnModelInstance modelInstance, ClockActuatorClient client) {
+        this.zeebeClient = zeebeClient;
+        this.originalModelInstance = modelInstance;
         this.client = client;
     }
 
@@ -59,11 +62,6 @@ public class TimeAwareDemoGenerator {
 
     public TimeAwareDemoGenerator timeBetweenStartsBusinessDays(String mean, String standardDeviation) {
         timeBetweenStartsBusinessDays = new StatisticalDistribution(parseTime(mean).get(), parseTime(standardDeviation).get());
-        return this;
-    }
-
-    public TimeAwareDemoGenerator processDefinitionKey(String processDefinitionKey) {
-        this.processDefinitionKey = processDefinitionKey;
         return this;
     }
 
@@ -124,18 +122,21 @@ public class TimeAwareDemoGenerator {
         runningInstance = this;
 
         try {
-            instrumentator = new DemoModelInstrumentator(client);
-            StartEvent startEvent = instrumentator.tweakProcessDefinition(processDefinitionKey);
+            instrumentator = new DemoModelInstrumentator();
+            BpmnModelInstance tweakedBpmnModelInstance = instrumentator.tweakProcessDefinition(originalModelInstance);
 
-            /**
-             * Todo: Deploy tweaked models
-             */
+            zeebeClient.newDeployCommand()
+                    .addProcessModel(tweakedBpmnModelInstance, "test.bpmn")
+                    .send().join();
             try{
-                return simulate();
+                long result = simulate();
+                return result;
             } finally {
-                /**
-                 * Todo: Restore original models
-                 */
+                // TODO There is a good risk that the modelInstance is mutable and the orogonalModelInstance is also changed here
+                // - then we would need to switch to using the BPMN XML strings we created in the DemoModelInstrumentator
+                zeebeClient.newDeployCommand()
+                        .addProcessModel(originalModelInstance, "test.bpmn")
+                        .send().join();
             }
 
         } finally {
