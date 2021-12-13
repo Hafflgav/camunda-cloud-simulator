@@ -15,7 +15,7 @@ import javax.annotation.PostConstruct;
 
 @SpringBootApplication
 @EnableZeebeClient
-@ZeebeDeployment(resources = "classpath:*bpmn")
+@ZeebeDeployment(resources = "classpath*:*.bpmn")
 public class SimulatorApplication {
 
 	@Qualifier("zeebeClientLifecycle")
