@@ -5,6 +5,7 @@ import io.camunda.zeebe.client.ZeebeClient;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
 import io.camunda.zeebe.model.bpmn.instance.Documentation;
 import io.camunda.zeebe.model.bpmn.instance.Process;
+import io.camunda.zeebe.model.bpmn.instance.SequenceFlow;
 
 import java.util.*;
 import java.util.logging.Logger;
@@ -24,14 +25,14 @@ public class DemoDataGenerator {
     public static long autoGenerateFor(ZeebeClient zeebeClient, String zeebeBrokerAddress, BpmnModelInstance modelInstance) {
         log.info("check auto generation for " + modelInstance.getDefinitions().getName());
 
-        String simulate = findProperty(modelInstance, "simulate").orElse("false");
-        String numberOfDaysInPast = findProperty(modelInstance, "simulateNumberOfDaysInPast").orElse("30");
-        String timeBetweenStartsBusinessDaysMean = findProperty(modelInstance, "simulateTimeBetweenStartsBusinessDaysMean").orElse("3600");
-        String timeBetweenStartsBusinessDaysSd = findProperty(modelInstance, "simulateTimeBetweenStartsBusinessDaysSd").orElse("0");
-        String startBusinessDayAt = findProperty(modelInstance, "simulateStartBusinessDayAt").orElse("8:00");
-        String endBusinessDayAt = findProperty(modelInstance, "simulateEndBusinessDayAt").orElse("18:00");
-        String includeWeekend = findProperty(modelInstance, "simulateIncludeWeekend").orElse("false");
-        boolean runAlways = findProperty(modelInstance, "simulateRunAlways").orElse("false").toLowerCase().equals("true");
+        String simulate = findProperty(modelInstance, Process.class, "simulate").orElse("false");
+        String numberOfDaysInPast = findProperty(modelInstance, Process.class, "simulateNumberOfDaysInPast").orElse("30");
+        String timeBetweenStartsBusinessDaysMean = findProperty(modelInstance, Process.class, "simulateTimeBetweenStartsBusinessDaysMean").orElse("3600");
+        String timeBetweenStartsBusinessDaysSd = findProperty(modelInstance, Process.class, "simulateTimeBetweenStartsBusinessDaysSd").orElse("0");
+        String startBusinessDayAt = findProperty(modelInstance, Process.class, "simulateStartBusinessDayAt").orElse("8:00");
+        String endBusinessDayAt = findProperty(modelInstance, Process.class, "simulateEndBusinessDayAt").orElse("18:00");
+        String includeWeekend = findProperty(modelInstance, Process.class, "simulateIncludeWeekend").orElse("false");
+        boolean runAlways = findProperty(modelInstance, Process.class, "simulateRunAlways").orElse("false").toLowerCase().equals("true");
 
         if (simulate.equals("false")) {
             log.info("simulation was set to false - no simulation triggered");
@@ -52,23 +53,25 @@ public class DemoDataGenerator {
         }
     }
 
-    public static Optional<String> findProperty(BpmnModelInstance modelInstance, String propertyNameToSearch) {
+    public static Optional<String> findProperty(BpmnModelInstance modelInstance, Class propertyClass,String propertyNameToSearch) {
         Collection<Documentation> documentations = modelInstance.getModelElementsByType(Documentation.class);
         HashMap<String, String> simulationParameter = new HashMap<>();
 
         for (Documentation documentation : documentations) {
-            String documentationContent = documentation.getRawTextContent();
-            String[] lines = documentationContent.split("\n");
+            if (propertyClass.isAssignableFrom(documentation.getParentElement().getClass())) {
+                String documentationContent = documentation.getRawTextContent();
+                String[] lines = documentationContent.split("\n");
 
-            for (String line : lines) {
-                if(line.isEmpty()){
-                    continue;
-                }
-                String[] keyValue = line.trim().split("=");
-                simulationParameter.put(keyValue[0].trim(), keyValue[1].trim());
+                for (String line : lines) {
+                    if (line.isEmpty()) {
+                        continue;
+                    }
+                    String[] keyValue = line.trim().split("=");
+                    simulationParameter.put(keyValue[0].trim(), keyValue[1].trim());
 
-                if (simulationParameter.containsKey(propertyNameToSearch)) {
-                    return Optional.of(simulationParameter.get(propertyNameToSearch));
+                    if (simulationParameter.containsKey(propertyNameToSearch)) {
+                        return Optional.of(simulationParameter.get(propertyNameToSearch));
+                    }
                 }
             }
         }

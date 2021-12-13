@@ -6,6 +6,7 @@ import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
 import io.camunda.zeebe.model.bpmn.instance.*;
 import io.camunda.zeebe.model.bpmn.instance.Process;
 import io.camunda.zeebe.model.bpmn.instance.zeebe.ZeebeTaskDefinition;
+import org.camunda.bpm.model.xml.ModelInstance;
 import org.camunda.bpm.model.xml.impl.util.IoUtil;
 import org.camunda.bpm.model.xml.instance.ModelElementInstance;
 import org.slf4j.Logger;
@@ -15,9 +16,10 @@ import java.io.ByteArrayInputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * This class is responsible to create a tweaked model that will be executed during simulation
- */
+import static camunda.cloud.simulator.DemoDataGenerator.findProperty;
+import static org.camunda.bpm.model.xml.test.AbstractModelElementInstanceTest.modelInstance;
+
+
 public class DemoModelInstrumentator {
 
     private static final Logger LOG = LoggerFactory.getLogger(DemoModelInstrumentator.class);
@@ -86,7 +88,7 @@ public class DemoModelInstrumentator {
             if (checkKeepLogic(xorGateway)) {
                 continue;
             }
-            tweakGateway(xorGateway);
+            tweakGateway(xorGateway, bpmn);
         }
 
         Bpmn.validateModel(bpmn);
@@ -96,8 +98,23 @@ public class DemoModelInstrumentator {
         return bpmn;
     }
 
-    private void tweakGateway(ExclusiveGateway xorGateway) {
-        // TODO
+    private void tweakGateway(ExclusiveGateway xorGateway, BpmnModelInstance bpmn) {
+        double probabilitySum = 0;
+        // Process Variable used to store sample from distribution to decide for
+        // outgoing transition
+        String var = "SIM_SAMPLE_VALUE_" + xorGateway.getId().replaceAll("-", "_");
+
+        Collection<SequenceFlow> flows = xorGateway.getOutgoing();
+        if (flows.size() > 1) { // if outgoing flows = 1 it is a joining gateway
+            for (SequenceFlow sequenceFlow : flows) {
+                double probability = Double.parseDouble(findProperty(bpmn, SequenceFlow.class, "probability").orElse("1.0"));
+                ConditionExpression conditionExpression = bpmn.newInstance(ConditionExpression.class);
+                conditionExpression.setTextContent("=" + var + " >= " + probabilitySum + " && " + var + " < " + (probabilitySum + probability));
+                sequenceFlow.setConditionExpression(conditionExpression);
+
+                probabilitySum += probability;
+            }
+        }
     }
 
     protected boolean checkKeepLogic(BaseElement bpmnBaseElement) {

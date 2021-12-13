@@ -18,6 +18,7 @@ import javax.annotation.PostConstruct;
 @ZeebeDeployment(resources = "classpath:*bpmn")
 public class SimulatorApplication {
 
+	@Qualifier("zeebeClientLifecycle")
 	@Autowired
 	private ZeebeClient zeebeClient;
 	protected final String zeebeBrokerAddress = "123";

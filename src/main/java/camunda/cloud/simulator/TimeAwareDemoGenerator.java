@@ -2,6 +2,7 @@ package camunda.cloud.simulator;
 
 import camunda.cloud.clock.ClockActuatorClient;
 import io.camunda.zeebe.client.ZeebeClient;
+import io.camunda.zeebe.client.api.response.ProcessInstanceEvent;
 import io.camunda.zeebe.model.bpmn.Bpmn;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
 import io.camunda.zeebe.spring.client.annotation.ZeebeWorker;
@@ -136,7 +137,6 @@ public class TimeAwareDemoGenerator {
                 zeebeClient.newDeployCommand()
                         .addProcessModel(instrumentator.getOriginalModels(), "test.bpmn")
                         .send().join();
-
             }
         } finally {
             runningInstance = null;
@@ -186,13 +186,12 @@ public class TimeAwareDemoGenerator {
                     e.printStackTrace();
                 }
 
-                // fire!
-                /**
-                 * Todo: Start Process Instance in Zeebe with given Paramenters
-                 */
+
+                //Todo: Add parameters
+                ProcessInstanceEvent instance = zeebeClient.newCreateInstanceCommand().processDefinitionKey(0).variables("to be set").send().join();
 
                 startedInstances++;
-                //runningProcessInstanceIds.add();
+                runningProcessInstanceIds.add(instance.getBpmnProcessId());
                 nextStartTime = calculateNextStartTime(nextStartTime, lastTimeToStart.getTime());
 
                 continue;
@@ -200,6 +199,8 @@ public class TimeAwareDemoGenerator {
 
             /**
              * Todo: Set time to due date of the next activity
+             *
+             *
              * if (candidate.get().getDue().after(client.getCurrentTime())) {
              *     ClockUtil.setCurrentTime(candidate.get().getDue());
              * }
@@ -275,7 +276,7 @@ public class TimeAwareDemoGenerator {
         /**
          * Todo: Get all doable work of all running (process|call activity) instances
          */
-        
+
         List<Work<?>> candidates = new LinkedList<>();
         Optional<Work<?>> candidate = candidates.stream().min((workA, workB) -> workA.getDue().compareTo(workB.getDue()));
         return candidate;

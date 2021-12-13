@@ -25,3 +25,5 @@ hs_err_pid*
 
 #IntelliJ Folders
 .idea
+
+src/test/java/camunda/cloud/.DS_Store
