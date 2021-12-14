@@ -3,6 +3,7 @@ package camunda.cloud.simulator;
 import camunda.cloud.clock.ClockActuatorClient;
 import io.camunda.zeebe.client.ZeebeClient;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
+import io.camunda.zeebe.model.bpmn.instance.BaseElement;
 import io.camunda.zeebe.model.bpmn.instance.Documentation;
 import io.camunda.zeebe.model.bpmn.instance.Process;
 import io.camunda.zeebe.model.bpmn.instance.SequenceFlow;
@@ -53,7 +54,38 @@ public class DemoDataGenerator {
         }
     }
 
-    public static Optional<String> findProperty(BpmnModelInstance modelInstance, Class propertyClass,String propertyNameToSearch) {
+    public static Optional<String> findProperty(BpmnModelInstance modelInstance, BaseElement parentElement, String propertyNameToSearch) {
+        // Stupid copy from emthod below - we might make it more clever :-)
+        Collection<Documentation> documentations = modelInstance.getModelElementsByType(Documentation.class);
+        HashMap<String, String> simulationParameter = new HashMap<>();
+
+        for (Documentation documentation : documentations) {
+            if (((BaseElement)documentation.getParentElement()).getId().equals(parentElement.getId())) {
+                String documentationContent = documentation.getRawTextContent();
+                String[] lines = documentationContent.split("\n");
+
+                for (String line : lines) {
+                    if (line.isEmpty()) {
+                        continue;
+                    }
+                    String[] keyValue = line.trim().split("=");
+                    simulationParameter.put(keyValue[0].trim(), keyValue[1].trim());
+
+                    if (simulationParameter.containsKey(propertyNameToSearch)) {
+                        return Optional.of(simulationParameter.get(propertyNameToSearch));
+                    }
+                }
+            }
+        }
+
+        /**
+         * Question: Removing the if condition (if (Process.class.isAssignableFrom(documentation.getParentElement().getClass())))
+         * should make it possible to query the whole documentation
+         */
+        return Optional.empty();
+    }
+
+    public static Optional<String> findProperty(BpmnModelInstance modelInstance, Class propertyClass, String propertyNameToSearch) {
         Collection<Documentation> documentations = modelInstance.getModelElementsByType(Documentation.class);
         HashMap<String, String> simulationParameter = new HashMap<>();
 

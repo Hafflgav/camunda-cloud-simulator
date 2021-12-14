@@ -2,6 +2,8 @@ package camunda.cloud.simulator;
 
 import camunda.cloud.clock.ClockActuatorClient;
 import io.camunda.zeebe.client.ZeebeClient;
+import io.camunda.zeebe.client.api.response.ActivateJobsResponse;
+import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.response.ProcessInstanceEvent;
 import io.camunda.zeebe.model.bpmn.Bpmn;
 import io.camunda.zeebe.model.bpmn.BpmnModelInstance;
@@ -14,16 +16,14 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.*;
 
 public class TimeAwareDemoGenerator {
     public static final int METRIC_INTERVAL_MINUTES = 15;
     private static final Logger LOG = LoggerFactory.getLogger(TimeAwareDemoGenerator.class);
-    private static TimeAwareDemoGenerator runningInstance = null;
 
-    public static TimeAwareDemoGenerator getRunningInstance() {
-        return runningInstance;
-    }
+    private static TimeAwareDemoGenerator runningInstance;
 
     private String bpmnProcessId;
     private int numberOfDaysInPast;
@@ -34,9 +34,7 @@ public class TimeAwareDemoGenerator {
     private boolean runAlways;
     private boolean includeWeekend = false;
     private ClockActuatorClient clockActuatorClient;
-    private Map<String, StatisticalDistribution> distributions = new HashMap<String, StatisticalDistribution>();
     private String deploymentId;
-    private DatatypeFactory datatypeFactory;
     private Date previousStartTime;
     private ZeebeClient zeebeClient;
     private BpmnModelInstance originalModelInstance;
@@ -47,6 +45,7 @@ public class TimeAwareDemoGenerator {
     private DemoModelInstrumentator instrumentator;
     private Date cachedDayStartTime = null;
     private Date cachedDayEndTime = null;
+    private BpmnModelInstance tweakedBpmnModelInstance;
 
     public Date getStopTime() {
         return stopTime;
@@ -125,7 +124,7 @@ public class TimeAwareDemoGenerator {
 
         try {
             instrumentator = new DemoModelInstrumentator();
-            BpmnModelInstance tweakedBpmnModelInstance = instrumentator.tweakProcessDefinition(originalModelInstance);
+            tweakedBpmnModelInstance = instrumentator.tweakProcessDefinition(originalModelInstance);
 
             zeebeClient.newDeployCommand()
                     .addProcessModel(tweakedBpmnModelInstance, "test.bpmn")
@@ -145,10 +144,9 @@ public class TimeAwareDemoGenerator {
     }
 
     protected long simulate() {
-        /** Todo: refresh content data generator
-         * ContentGeneratorRegistry.init(engine);
-         */
+        // Removed for now: https://github.com/camunda-consulting/camunda-util-demo-data-generator/tree/master/camunda-util-demo-data-generator/src/main/java/com/camunda/demo/environment/simulation
 
+        // Calculate start date ('numberOfDaysToSkip' into the past), with stopDate = now
         if (stopTime == null) {
             stopTime = new Date();
         }
@@ -164,6 +162,8 @@ public class TimeAwareDemoGenerator {
         long startedInstances = 0;
         Set<String> runningProcessInstanceIds = new TreeSet<>();
         Set<String> processInstanceIdsAlreadyReachedCurrentTime = new HashSet<>();
+
+        // calculate time to start first process instance
         nextStartTime = calculateNextStartTime(null, lastTimeToStart.getTime());
 
         while (true) {
@@ -264,23 +264,43 @@ public class TimeAwareDemoGenerator {
     }
 
     protected Optional<Work<?>> calculateNextSimulationStep(Date theRealNow, Set<String> runningProcessInstanceIds, Set<String> processInstancIdsAlreadyReachedCurrentTime) {
-        if (runningProcessInstanceIds.isEmpty()) {
+        // select next work to execute (based on due date)
+        SortedSet<Work<?>> workList = createWorkList();
+        if (workList.size()==0) {
             return Optional.empty();
+        } else {
+            return Optional.of(workList.first());
+        }
+    }
+
+    private List<ActivatedJob> jobsForWork;
+
+    private SortedSet<Work<?>> createWorkList() {
+        SortedSet<Work<?>> allWork = new TreeSet<>();
+
+        // Collect all Jobs (ServiceTask-related work)
+        // Therefore activate/load all new jobs
+        ActivateJobsResponse jobsResponse = zeebeClient.newActivateJobsCommand().jobType(DemoModelInstrumentator.DEMO_WORKER_TYPE)
+                .maxJobsToActivate(Integer.MAX_VALUE)
+                .timeout(Duration.ofDays(1000000))
+                .workerName("demo-data-generator")
+                .send().join();
+        jobsForWork.addAll(jobsResponse.getJobs());
+
+        // and add all jobs to work list which is sorted by date
+        for (ActivatedJob job : jobsForWork) {
+            allWork.add(new JobWork(job, tweakedBpmnModelInstance, zeebeClient, jobsForWork));
         }
 
-        /**
-         * Todo: Collect all started process instances
-         * Additionally we need to remember to collect all previously started call activities
-         */
+        // Collect all Human Tasks (User Task related work)
+        // TODO Query User Tasks and create WorkItem as above
 
-        /**
-         * Todo: Get all doable work of all running (process|call activity) instances
-         */
+        // TODO: How to handle messages?
 
-        List<Work<?>> candidates = new LinkedList<>();
-        Optional<Work<?>> candidate = candidates.stream().min((workA, workB) -> workA.getDue().compareTo(workB.getDue()));
-        return candidate;
+        return allWork;
     }
+
+
 }
 
 

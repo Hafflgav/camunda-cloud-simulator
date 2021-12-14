@@ -23,6 +23,7 @@ import static org.camunda.bpm.model.xml.test.AbstractModelElementInstanceTest.mo
 public class DemoModelInstrumentator {
 
     private static final Logger LOG = LoggerFactory.getLogger(DemoModelInstrumentator.class);
+    public static final String DEMO_WORKER_TYPE = "DEMO-WORKER";
     private Map<String, String> originalModels = new HashMap<String, String>();
     private Map<String, String> tweakedModels = new HashMap<String, String>();
     private Set<String> tweakedProcessKeys = new HashSet<>();
@@ -66,14 +67,14 @@ public class DemoModelInstrumentator {
             if (checkKeepLogic(serviceTask)) {
                 continue;
             }
-            serviceTask.getSingleExtensionElement(ZeebeTaskDefinition.class).setType("DEMO-WORKER");
+            serviceTask.getSingleExtensionElement(ZeebeTaskDefinition.class).setType(DEMO_WORKER_TYPE);
         }
         for (ModelElementInstance modelElementInstance : sendTasks) {
             SendTask serviceTask = ((SendTask) modelElementInstance);
             if (checkKeepLogic(serviceTask)) {
                 continue;
             }
-            serviceTask.getSingleExtensionElement(ZeebeTaskDefinition.class).setType("DEMO-WORKER");
+            serviceTask.getSingleExtensionElement(ZeebeTaskDefinition.class).setType(DEMO_WORKER_TYPE);
         }
 
         for (ModelElementInstance modelElementInstance : userTasks) {
@@ -107,6 +108,7 @@ public class DemoModelInstrumentator {
         Collection<SequenceFlow> flows = xorGateway.getOutgoing();
         if (flows.size() > 1) { // if outgoing flows = 1 it is a joining gateway
             for (SequenceFlow sequenceFlow : flows) {
+                // TODO: Make sure "findProperty" only finds the sequenceFlow with a specific ID (or parent or whatever)
                 double probability = Double.parseDouble(findProperty(bpmn, SequenceFlow.class, "probability").orElse("1.0"));
                 ConditionExpression conditionExpression = bpmn.newInstance(ConditionExpression.class);
                 conditionExpression.setTextContent("=" + var + " >= " + probabilitySum + " && " + var + " < " + (probabilitySum + probability));
